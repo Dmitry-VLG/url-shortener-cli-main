@@ -15,6 +15,10 @@ public class Link {
     private long maxClicks;              // лимит может быть изменён владельцем (расширение)
     private long clicks;                 // счётчик переходов
 
+    // ✅ чтобы не дублировать notifyLimitExceeded:
+    // true = уведомление о достижении/исчерпании лимита уже отправлялось
+    private boolean limitNotified;
+
     public Link(String code, String originalUrl, UUID ownerUuid,
                 long ttlSeconds, long maxClicks) {
         this.code = code;
@@ -23,6 +27,7 @@ public class Link {
         this.ttlSeconds = ttlSeconds;
         this.maxClicks = maxClicks;
         this.createdAt = Instant.now();
+        this.limitNotified = false;
     }
 
     /* --- геттеры --- */
@@ -33,6 +38,9 @@ public class Link {
     public long getTtlSeconds()     { return ttlSeconds; }
     public long getMaxClicks()      { return maxClicks; }
     public long getClicks()         { return clicks; }
+
+    // ✅ доступ к флагу уведомления
+    public boolean isLimitNotified() { return limitNotified; }
 
     /* --- бизнес-методы --- */
     public boolean isExpired() {
@@ -50,6 +58,16 @@ public class Link {
         clicks++;
     }
 
+    /** Вызывай из LinkService, когда реально отправил notifyLimitExceeded */
+    public void markLimitNotified() {
+        this.limitNotified = true;
+    }
+
+    /** Сбрасываем, если лимит стал снова недостигнут (например, владелец увеличил maxClicks) */
+    public void clearLimitNotified() {
+        this.limitNotified = false;
+    }
+
     public void updateMaxClicks(long newMaxClicks) {
         if (newMaxClicks <= 0) {
             throw new IllegalArgumentException("maxClicks must be > 0");
@@ -57,7 +75,13 @@ public class Link {
         if (newMaxClicks < clicks) {
             throw new IllegalArgumentException("new maxClicks must be >= current clicks");
         }
+
         this.maxClicks = newMaxClicks;
+
+        // ✅ если после изменения лимит больше НЕ достигнут — разрешаем будущие уведомления
+        if (!isLimitReached()) {
+            clearLimitNotified();
+        }
     }
 
     /* equals / hashCode / toString */
@@ -68,7 +92,10 @@ public class Link {
         return Objects.equals(code, link.code);
     }
 
-    @Override public int hashCode() { return Objects.hash(code); }
+    @Override
+    public int hashCode() {
+        return Objects.hash(code);
+    }
 
     @Override
     public String toString() {

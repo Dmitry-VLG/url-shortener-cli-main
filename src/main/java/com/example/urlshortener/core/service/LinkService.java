@@ -60,26 +60,44 @@ public class LinkService {
 
         UUID owner = link.getOwnerUuid();
 
+        // TTL
         if (link.isExpired()) {
             notificationService.notifyLinkExpired(link, owner);
+
             // удаляем сразу, чтобы поведение было предсказуемым
             repo.delete(code);
-            repo.persist();
+            repo.persist(); // ✅ фикс: сохраняем удаление в JSON
+
             throw new IllegalStateException("Link expired");
         }
 
+        // Лимит ДО клика: открыть нельзя
         if (link.isLimitReached()) {
-            notificationService.notifyLimitExceeded(link, owner);
+            // ✅ предотвращаем дублирование: уведомляем только если ещё не уведомляли
+            if (!link.isLimitNotified()) {
+                notificationService.notifyLimitExceeded(link, owner);
+                link.markLimitNotified();
+                repo.persist(); // ✅ сохраняем флаг
+            }
             throw new IllegalStateException("Click limit reached");
         }
 
+        // Разрешённый клик
         link.registerClick();
-        repo.persist(); // важно: сохраняем clicks, иначе лимит можно обойти перезапуском
+
+        // ✅ После клика: если лимит достигнут впервые — уведомляем один раз
+        if (link.isLimitReached() && !link.isLimitNotified()) {
+            notificationService.notifyLimitExceeded(link, owner);
+            link.markLimitNotified();
+        }
 
         checkApproachingLimit(link, owner);
 
+        repo.persist(); // ✅ сохраняем clicks + (возможно) limitNotified
+
         return link.getOriginalUrl();
     }
+
 
     public List<Link> listByOwner(UUID owner) {
         return repo.findByOwner(owner);
