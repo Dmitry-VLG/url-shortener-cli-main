@@ -64,6 +64,7 @@ public class LinkService {
             notificationService.notifyLinkExpired(link, owner);
             // удаляем сразу, чтобы поведение было предсказуемым
             repo.delete(code);
+            repo.persist();
             throw new IllegalStateException("Link expired");
         }
 
@@ -76,10 +77,6 @@ public class LinkService {
         repo.persist(); // важно: сохраняем clicks, иначе лимит можно обойти перезапуском
 
         checkApproachingLimit(link, owner);
-
-        if (link.isLimitReached()) {
-            notificationService.notifyLimitExceeded(link, owner);
-        }
 
         return link.getOriginalUrl();
     }
